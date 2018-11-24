@@ -10,5 +10,13 @@
          "username":"admin",
          "secret":"adminpw"
       }
-   ]
+   ],
+   "user1":{
+      "username":"thomas",
+      "org":"Org1"
+   },
+   "user2":{
+      "username":"anli",
+      "org":"Org2"
+   }
 }

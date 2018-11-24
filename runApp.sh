@@ -36,7 +36,7 @@ function restartNetwork() {
 	dkrm
 
 	#Cleanup the stores
-	rm -rf ./fabric-client-kv-org*
+	rm -rf ./fabric-client-kv-org* /tmp/fabric-client-kv-org*
 
 	#Start the network
 	docker-compose -f ./artifacts/docker-compose.yaml up -d

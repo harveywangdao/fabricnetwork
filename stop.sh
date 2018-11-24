@@ -36,7 +36,7 @@ function stopNetwork() {
     dkrm
 
     #Cleanup the stores
-    rm -rf ./fabric-client-kv-org*
+    rm -rf ./fabric-client-kv-org* /tmp/fabric-client-kv-org*
 }
 
 stopNetwork

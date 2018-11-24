@@ -15,7 +15,9 @@
  */
 'use strict';
 var log4js = require('log4js');
-var logger = log4js.getLogger('SampleWebApp');
+var logger = log4js.getLogger('Fabric-Network');
+logger.setLevel('INFO');
+
 var express = require('express');
 var session = require('express-session');
 var cookieParser = require('cookie-parser');
@@ -23,12 +25,12 @@ var bodyParser = require('body-parser');
 var http = require('http');
 var util = require('util');
 var app = express();
-var expressJWT = require('express-jwt');
-var jwt = require('jsonwebtoken');
 var bearerToken = require('express-bearer-token');
 var cors = require('cors');
-logger.setLevel('INFO');
+
 require('./config.js');
+var config = require('./config.json');
+
 var hfc = require('fabric-client');
 
 var helper = require('./app/helper.js');
@@ -51,40 +53,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({
 	extended: false
 }));
-// set secret variable
-app.set('secret', 'thisismysecret');
-app.use(expressJWT({
-	secret: 'thisismysecret'
-}).unless({
-	path: ['/users']
-}));
-app.use(bearerToken());
-app.use(function(req, res, next) {
-	logger.debug(' ------>>>>>> new request for %s',req.originalUrl);
-	if (req.originalUrl.indexOf('/users') >= 0) {
-		return next();
-	}
 
-	var token = req.token;
-	jwt.verify(token, app.get('secret'), function(err, decoded) {
-		if (err) {
-			res.send({
-				success: false,
-				message: 'Failed to authenticate token. Make sure to include the ' +
-					'token returned from /users call in the authorization header ' +
-					' as a Bearer token'
-			});
-			return;
-		} else {
-			// add the decoded user name and org name to the request object
-			// for the downstream code to use
-			req.username = decoded.username;
-			req.orgname = decoded.orgName;
-			logger.debug(util.format('Decoded from JWT token: username - %s, orgname - %s', decoded.username, decoded.orgName));
-			return next();
-		}
-	});
-});
+app.use(bearerToken());
 
 ///////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// START SERVER /////////////////////////////////
@@ -108,115 +78,154 @@ function getErrorMessage(field) {
 // Register and enroll user
 app.post('/users', async function(req, res) {
 	var username = req.body.username;
-	var orgName = req.body.orgName;
-	logger.debug('End point : /users');
-	logger.debug('User name : ' + username);
-	logger.debug('Org name  : ' + orgName);
+	var orgname = req.body.orgname;
+
+	logger.debug('username :' + username);
+	logger.debug('orgname:' + orgname);
+
 	if (!username) {
 		res.json(getErrorMessage('\'username\''));
 		return;
 	}
-	if (!orgName) {
-		res.json(getErrorMessage('\'orgName\''));
+
+	if (!orgname) {
+		res.json(getErrorMessage('\'orgname\''));
 		return;
 	}
-	var token = jwt.sign({
-		exp: Math.floor(Date.now() / 1000) + parseInt(hfc.getConfigSetting('jwt_expiretime')),
-		username: username,
-		orgName: orgName
-	}, app.get('secret'));
-	let response = await helper.getRegisteredUser(username, orgName, true);
-	logger.debug('-- returned from registering the username %s for organization %s',username,orgName);
+
+	let response = await helper.getRegisteredUser(username, orgname, true);
 	if (response && typeof response !== 'string') {
-		logger.debug('Successfully registered the username %s for organization %s',username,orgName);
-		response.token = token;
+		logger.info('Success to register the username %s for organization %s with::%s', username, orgname, response);
 		res.json(response);
 	} else {
-		logger.debug('Failed to register the username %s for organization %s with::%s',username,orgName,response);
+		logger.error('Failed to register the username %s for organization %s with::%s', username, orgname, response);
 		res.json({success: false, message: response});
 	}
-
 });
+
 // Create Channel
 app.post('/channels', async function(req, res) {
-	logger.debug('<<<<<<<<<<<<<<<<< C R E A T E  C H A N N E L >>>>>>>>>>>>>>>>>');
-	logger.debug('End point : /channels');
+	logger.info('<<<<<<<<<<<<<<<<<Create Channel>>>>>>>>>>>>>>>>>');
 	var channelName = req.body.channelName;
 	var channelConfigPath = req.body.channelConfigPath;
+	var username = config.user1.username;
+	var orgname = config.user1.org;
+
 	logger.debug('Channel name : ' + channelName);
 	logger.debug('channelConfigPath : ' + channelConfigPath); //../artifacts/channel/mychannel.tx
+
 	if (!channelName) {
 		res.json(getErrorMessage('\'channelName\''));
 		return;
 	}
+
 	if (!channelConfigPath) {
 		res.json(getErrorMessage('\'channelConfigPath\''));
 		return;
 	}
 
-	let message = await createChannel.createChannel(channelName, channelConfigPath, req.username, req.orgname);
+	let message = await createChannel.createChannel(channelName, channelConfigPath, username, orgname);
 	res.send(message);
 });
+
 // Join Channel
 app.post('/channels/:channelName/peers', async function(req, res) {
-	logger.debug('<<<<<<<<<<<<<<<<< J O I N  C H A N N E L >>>>>>>>>>>>>>>>>');
+	logger.info('<<<<<<<<<<<<<<<<<Join Channel>>>>>>>>>>>>>>>>>');
 	var channelName = req.params.channelName;
 	var peers = req.body.peers;
+	var username = req.body.username;
+	var orgname = req.body.orgname;
+
 	logger.debug('channelName : ' + channelName);
 	logger.debug('peers : ' + peers);
-	logger.debug('username :' + req.username);
-	logger.debug('orgname:' + req.orgname);
+	logger.debug('username :' + username);
+	logger.debug('orgname:' + orgname);
 
 	if (!channelName) {
 		res.json(getErrorMessage('\'channelName\''));
 		return;
 	}
+
 	if (!peers || peers.length == 0) {
 		res.json(getErrorMessage('\'peers\''));
 		return;
 	}
 
-	let message =  await join.joinChannel(channelName, peers, req.username, req.orgname);
+	if (!username) {
+		res.json(getErrorMessage('\'username\''));
+		return;
+	}
+
+	if (!orgname) {
+		res.json(getErrorMessage('\'orgname\''));
+		return;
+	}
+
+	let message =  await join.joinChannel(channelName, peers, username, orgname);
 	res.send(message);
 });
+
 // Install chaincode on target peers
 app.post('/chaincodes', async function(req, res) {
-	logger.debug('==================== INSTALL CHAINCODE ==================');
+	logger.info('==================== INSTALL CHAINCODE ==================');
 	var peers = req.body.peers;
 	var chaincodeName = req.body.chaincodeName;
 	var chaincodePath = req.body.chaincodePath;
 	var chaincodeVersion = req.body.chaincodeVersion;
 	var chaincodeType = req.body.chaincodeType;
+	var username = req.body.username;
+	var orgname = req.body.orgname;
+
 	logger.debug('peers : ' + peers); // target peers list
 	logger.debug('chaincodeName : ' + chaincodeName);
 	logger.debug('chaincodePath  : ' + chaincodePath);
 	logger.debug('chaincodeVersion  : ' + chaincodeVersion);
 	logger.debug('chaincodeType  : ' + chaincodeType);
+	logger.debug('username :' + username);
+	logger.debug('orgname:' + orgname);
+
 	if (!peers || peers.length == 0) {
 		res.json(getErrorMessage('\'peers\''));
 		return;
 	}
+
 	if (!chaincodeName) {
 		res.json(getErrorMessage('\'chaincodeName\''));
 		return;
 	}
+
 	if (!chaincodePath) {
 		res.json(getErrorMessage('\'chaincodePath\''));
 		return;
 	}
+
 	if (!chaincodeVersion) {
 		res.json(getErrorMessage('\'chaincodeVersion\''));
 		return;
 	}
+
 	if (!chaincodeType) {
 		res.json(getErrorMessage('\'chaincodeType\''));
 		return;
 	}
-	let message = await install.installChaincode(peers, chaincodeName, chaincodePath, chaincodeVersion, chaincodeType, req.username, req.orgname)
-	res.send(message);});
+
+	if (!username) {
+		res.json(getErrorMessage('\'username\''));
+		return;
+	}
+
+	if (!orgname) {
+		res.json(getErrorMessage('\'orgname\''));
+		return;
+	}
+
+	let message = await install.installChaincode(peers, chaincodeName, chaincodePath, chaincodeVersion, chaincodeType, username, orgname)
+	res.send(message);
+});
+
 // Instantiate chaincode on target peers
 app.post('/channels/:channelName/chaincodes', async function(req, res) {
-	logger.debug('==================== INSTANTIATE CHAINCODE ==================');
+	logger.info('==================== INSTANTIATE CHAINCODE ==================');
 	var peers = req.body.peers;
 	var chaincodeName = req.body.chaincodeName;
 	var chaincodeVersion = req.body.chaincodeVersion;
@@ -224,6 +233,9 @@ app.post('/channels/:channelName/chaincodes', async function(req, res) {
 	var chaincodeType = req.body.chaincodeType;
 	var fcn = req.body.fcn;
 	var args = req.body.args;
+	var username = req.body.username;
+	var orgname = req.body.orgname;
+
 	logger.debug('peers  : ' + peers);
 	logger.debug('channelName  : ' + channelName);
 	logger.debug('chaincodeName : ' + chaincodeName);
@@ -231,70 +243,98 @@ app.post('/channels/:channelName/chaincodes', async function(req, res) {
 	logger.debug('chaincodeType  : ' + chaincodeType);
 	logger.debug('fcn  : ' + fcn);
 	logger.debug('args  : ' + args);
+	logger.debug('username :' + username);
+	logger.debug('orgname:' + orgname);
+
 	if (!chaincodeName) {
 		res.json(getErrorMessage('\'chaincodeName\''));
 		return;
 	}
+
 	if (!chaincodeVersion) {
 		res.json(getErrorMessage('\'chaincodeVersion\''));
 		return;
 	}
+
 	if (!channelName) {
 		res.json(getErrorMessage('\'channelName\''));
 		return;
 	}
+
 	if (!chaincodeType) {
 		res.json(getErrorMessage('\'chaincodeType\''));
 		return;
 	}
+
 	if (!args) {
 		res.json(getErrorMessage('\'args\''));
 		return;
 	}
 
-	let message = await instantiate.instantiateChaincode(peers, channelName, chaincodeName, chaincodeVersion, chaincodeType, fcn, args, req.username, req.orgname);
+	if (!username) {
+		res.json(getErrorMessage('\'username\''));
+		return;
+	}
+
+	if (!orgname) {
+		res.json(getErrorMessage('\'orgname\''));
+		return;
+	}
+
+	let message = await instantiate.instantiateChaincode(peers, channelName, chaincodeName, chaincodeVersion, chaincodeType, fcn, args, username, orgname);
 	res.send(message);
 });
+
 // Invoke transaction on chaincode on target peers
 app.post('/channels/:channelName/chaincodes/:chaincodeName', async function(req, res) {
-	logger.debug('==================== INVOKE ON CHAINCODE ==================');
+	logger.info('==================== INVOKE ON CHAINCODE ==================');
 	var peers = req.body.peers;
 	var chaincodeName = req.params.chaincodeName;
 	var channelName = req.params.channelName;
 	var fcn = req.body.fcn;
 	var args = req.body.args;
+	var username = config.user1.username;
+	var orgname = config.user1.org;
+
 	logger.debug('channelName  : ' + channelName);
 	logger.debug('chaincodeName : ' + chaincodeName);
 	logger.debug('fcn  : ' + fcn);
 	logger.debug('args  : ' + args);
+
 	if (!chaincodeName) {
 		res.json(getErrorMessage('\'chaincodeName\''));
 		return;
 	}
+
 	if (!channelName) {
 		res.json(getErrorMessage('\'channelName\''));
 		return;
 	}
+
 	if (!fcn) {
 		res.json(getErrorMessage('\'fcn\''));
 		return;
 	}
+
 	if (!args) {
 		res.json(getErrorMessage('\'args\''));
 		return;
 	}
 
-	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, req.username, req.orgname);
+	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
 	res.send(message);
 });
+
 // Query on chaincode on target peers
 app.get('/channels/:channelName/chaincodes/:chaincodeName', async function(req, res) {
-	logger.debug('==================== QUERY BY CHAINCODE ==================');
+	logger.info('==================== QUERY BY CHAINCODE ==================');
 	var channelName = req.params.channelName;
 	var chaincodeName = req.params.chaincodeName;
 	let args = req.query.args;
 	let fcn = req.query.fcn;
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
 
 	logger.debug('channelName : ' + channelName);
 	logger.debug('chaincodeName : ' + chaincodeName);
@@ -321,90 +361,116 @@ app.get('/channels/:channelName/chaincodes/:chaincodeName', async function(req, 
 	args = JSON.parse(args);
 	logger.debug(args);
 
-	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, req.username, req.orgname);
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
 	res.send(message);
 });
+
 //  Query Get Block by BlockNumber
 app.get('/channels/:channelName/blocks/:blockId', async function(req, res) {
 	logger.debug('==================== GET BLOCK BY NUMBER ==================');
 	let blockId = req.params.blockId;
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
+
 	logger.debug('channelName : ' + req.params.channelName);
 	logger.debug('BlockID : ' + blockId);
 	logger.debug('Peer : ' + peer);
+
 	if (!blockId) {
 		res.json(getErrorMessage('\'blockId\''));
 		return;
 	}
 
-	let message = await query.getBlockByNumber(peer, req.params.channelName, blockId, req.username, req.orgname);
+	let message = await query.getBlockByNumber(peer, req.params.channelName, blockId, username, orgname);
 	res.send(message);
 });
+
 // Query Get Transaction by Transaction ID
 app.get('/channels/:channelName/transactions/:trxnId', async function(req, res) {
 	logger.debug('================ GET TRANSACTION BY TRANSACTION_ID ======================');
 	logger.debug('channelName : ' + req.params.channelName);
 	let trxnId = req.params.trxnId;
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
+
 	if (!trxnId) {
 		res.json(getErrorMessage('\'trxnId\''));
 		return;
 	}
 
-	let message = await query.getTransactionByID(peer, req.params.channelName, trxnId, req.username, req.orgname);
+	let message = await query.getTransactionByID(peer, req.params.channelName, trxnId, username, orgname);
 	res.send(message);
 });
+
 // Query Get Block by Hash
 app.get('/channels/:channelName/blocks', async function(req, res) {
 	logger.debug('================ GET BLOCK BY HASH ======================');
 	logger.debug('channelName : ' + req.params.channelName);
 	let hash = req.query.hash;
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
+
 	if (!hash) {
 		res.json(getErrorMessage('\'hash\''));
 		return;
 	}
 
-	let message = await query.getBlockByHash(peer, req.params.channelName, hash, req.username, req.orgname);
+	let message = await query.getBlockByHash(peer, req.params.channelName, hash, username, orgname);
 	res.send(message);
 });
+
 //Query for Channel Information
 app.get('/channels/:channelName', async function(req, res) {
 	logger.debug('================ GET CHANNEL INFORMATION ======================');
 	logger.debug('channelName : ' + req.params.channelName);
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
 
-	let message = await query.getChainInfo(peer, req.params.channelName, req.username, req.orgname);
+	let message = await query.getChainInfo(peer, req.params.channelName, username, orgname);
 	res.send(message);
 });
+
 //Query for Channel instantiated chaincodes
 app.get('/channels/:channelName/chaincodes', async function(req, res) {
 	logger.debug('================ GET INSTANTIATED CHAINCODES ======================');
 	logger.debug('channelName : ' + req.params.channelName);
 	let peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
 
-	let message = await query.getInstalledChaincodes(peer, req.params.channelName, 'instantiated', req.username, req.orgname);
+	let message = await query.getInstalledChaincodes(peer, req.params.channelName, 'instantiated', username, orgname);
 	res.send(message);
 });
+
 // Query to fetch all Installed/instantiated chaincodes
 app.get('/chaincodes', async function(req, res) {
+	logger.debug('================ GET INSTALLED CHAINCODES ======================');
 	var peer = req.query.peer;
 	var installType = req.query.type;
-	logger.debug('================ GET INSTALLED CHAINCODES ======================');
+	var username = config.user2.username;
+	var orgname = config.user2.org;
 
-	let message = await query.getInstalledChaincodes(peer, null, 'installed', req.username, req.orgname)
+	let message = await query.getInstalledChaincodes(peer, null, 'installed', username, orgname)
 	res.send(message);
 });
+
 // Query to fetch channels
 app.get('/channels', async function(req, res) {
 	logger.debug('================ GET CHANNELS ======================');
 	logger.debug('peer: ' + req.query.peer);
 	var peer = req.query.peer;
+	var username = config.user2.username;
+	var orgname = config.user2.org;
+
 	if (!peer) {
 		res.json(getErrorMessage('\'peer\''));
 		return;
 	}
 
-	let message = await query.getChannels(peer, req.username, req.orgname);
+	let message = await query.getChannels(peer, username, orgname);
 	res.send(message);
 });
