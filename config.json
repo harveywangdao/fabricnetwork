@@ -3,6 +3,7 @@
    "port":"4000",
    "jwt_expiretime": "36000",
    "channelName":"mychannel",
+   "chaincodeName":"mycc",
    "CC_SRC_PATH":"../artifacts",
    "eventWaitTime":"30000",
    "admins":[
@@ -18,5 +19,7 @@
    "user2":{
       "username":"anli",
       "org":"Org2"
-   }
+   },
+   "invokePeers":["peer0.org1.example.com", "peer0.org2.example.com"],
+   "queryPeers":["peer0.org1.example.com"]
 }

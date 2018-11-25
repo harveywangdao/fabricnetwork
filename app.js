@@ -18,6 +18,7 @@ var log4js = require('log4js');
 var logger = log4js.getLogger('Fabric-Network');
 logger.setLevel('INFO');
 
+var uuid = require('uuid/v4');
 var express = require('express');
 var session = require('express-session');
 var cookieParser = require('cookie-parser');
@@ -322,6 +323,49 @@ app.post('/channels/:channelName/chaincodes/:chaincodeName', async function(req,
 	}
 
 	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
+	res.send(message);
+});
+
+app.post('/ocean/v1/issueToken', async function(req, res) {
+	logger.info('==================== IssueToken ==================');
+	var peers = config.invokePeers;
+	var channelName = config.channelName;
+	var chaincodeName = config.chaincodeName;
+
+	var fcn = "issueToken";
+	var pubKey = req.body.pubKey;
+	var origin = req.body.origin;
+	var signature = req.body.signature;
+
+	var username = config.user1.username;
+	var orgname = config.user1.org;
+
+	if (!pubKey) {
+		res.json(getErrorMessage('\'pubKey\''));
+		return;
+	}
+
+	if (!origin) {
+		res.json(getErrorMessage('\'origin\''));
+		return;
+	}
+
+	if (!signature) {
+		res.json(getErrorMessage('\'signature\''));
+		return;
+	}
+
+	tokenID = uuid().replace(/-/g, '');
+	logger.info("tokenID =", tokenID);
+
+	var args = [];
+	args.push(tokenID);
+	args.push(pubKey);
+	args.push(origin);
+	args.push(signature);
+
+	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
+	message.tokenID = tokenID;
 	res.send(message);
 });
 

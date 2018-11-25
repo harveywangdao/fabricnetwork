@@ -66,6 +66,7 @@ var invokeChaincode = async function(peerNames, channelName, chaincodeName, fcn,
 				logger.debug('invoke chaincode proposal was good');
 			} else {
 				logger.error('invoke chaincode proposal was bad');
+				error_message = proposalResponses[i].message;
 			}
 			all_good = all_good & one_good;
 		}
@@ -163,12 +164,20 @@ var invokeChaincode = async function(peerNames, channelName, chaincodeName, fcn,
 			'Successfully invoked the chaincode %s to the channel \'%s\' for transaction ID: %s',
 			org_name, channelName, tx_id_string);
 		logger.debug(message);
-
-		return tx_id_string;
+		let response = {
+			status:true,
+			tx_id:tx_id_string
+		}
+		return response;
 	} else {
 		let message = util.format('Failed to invoke chaincode. cause:%s',error_message);
 		logger.error(message);
-		throw new Error(message);
+		//throw new Error(message);
+		let response = {
+			status:false,
+			msg:message
+		}
+		return response;
 	}
 };
 

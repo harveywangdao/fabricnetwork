@@ -17,13 +17,16 @@ limitations under the License.
 package main
 
 import (
+	"encoding/hex"
+	"encoding/json"
+	"math/big"
 	"strconv"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	pb "github.com/hyperledger/fabric/protos/peer"
 )
 
-var logger = shim.NewLogger("fabric-chaincode")
+var logger = shim.NewLogger("fabric-ocean")
 
 type SimpleChaincode struct {
 }
@@ -72,19 +75,84 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 
 	if function == "delete" {
 		return t.delete(stub, args)
-	}
-	if function == "query" {
+	} else if function == "query" {
 		return t.query(stub, args)
-	}
-	if function == "initValue" {
+	} else if function == "initValue" {
 		return t.initValue(stub, args)
-	}
-	if function == "move" {
+	} else if function == "move" {
 		return t.move(stub, args)
 	}
 
-	logger.Error("func unknown :", function)
+	logger.Error("func unknown : " + function)
 	return shim.Error(function + " unknown")
+}
+
+type Token struct {
+	Address     string `json:"address"`
+	TokenName   string `json:"tokenName"`
+	TotalNumber string `json:"totalNumber"`
+}
+
+const (
+	TokenPrefix = "TokenPrefix"
+)
+
+func (t *SimpleChaincode) issueToken(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 4 {
+		return shim.Error("incorrect number of args")
+	}
+
+	tokenID := args[0]
+
+	verify, err := Verify(args[1], args[2], args[3])
+	if !verify {
+		return shim.Error("verify fail: " + err.Error())
+	}
+
+	if tokenID == "" {
+		return shim.Error("tokenID is null")
+	}
+
+	tokenJson, err := hex.DecodeString(args[2])
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	token := Token{}
+	err = json.Unmarshal(tokenJson, &token)
+	if err != nil {
+		return shim.Error("json unmarshal fail")
+	}
+
+	if GetAddress(args[1]) != token.Address {
+		return shim.Error("address and public key not match")
+	}
+
+	if len(token.TokenName) < 2 || len(token.TokenName) > 16 {
+		return shim.Error("tokenName need have 2-16 char")
+	}
+
+	if !IsGtZeroInteger(token.TotalNumber) {
+		return shim.Error("totalNumber need to be greater than 0 integer")
+	}
+
+	totalNumber := new(big.Int)
+	totalNumber, success := totalNumber.SetString(token.TotalNumber, 10)
+	if !success {
+		return shim.Error("totalNumber not match: " + token.TotalNumber)
+	}
+
+	tokenIDBytes, err := stub.GetState(TokenPrefix + tokenID)
+	if len(tokenIDBytes) != 0 {
+		return shim.Error("token already existed")
+	}
+
+	err = stub.PutState(TokenPrefix+tokenID, tokenJson)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	return shim.Success(nil)
 }
 
 func (t *SimpleChaincode) initValue(stub shim.ChaincodeStubInterface, args []string) pb.Response {
