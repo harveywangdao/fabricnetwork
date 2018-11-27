@@ -355,7 +355,7 @@ app.post('/ocean/v1/issueToken', async function(req, res) {
 		return;
 	}
 
-	tokenID = uuid().replace(/-/g, '');
+	let tokenID = uuid().replace(/-/g, '');
 	logger.info("tokenID =", tokenID);
 
 	var args = [];
@@ -366,6 +366,56 @@ app.post('/ocean/v1/issueToken', async function(req, res) {
 
 	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
 	message.tokenID = tokenID;
+	res.send(message);
+});
+
+app.get('/ocean/v1/queryToken/:tokenID', async function(req, res) {
+	logger.info('==================== QueryToken ==================');
+	let tokenID = req.params.tokenID;
+
+	let channelName = config.channelName;
+	let chaincodeName = config.chaincodeName;
+	let peer = config.queryPeers;
+	let username = config.user2.username;
+	let orgname = config.user2.org;
+	let fcn = "queryToken";
+
+	logger.info('tokenID : ' + tokenID);
+
+	if (!tokenID) {
+		res.json(getErrorMessage('\'tokenID\''));
+		return;
+	}
+
+	let args = [];
+	args.push(tokenID)
+
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
+	res.send(message);
+});
+
+app.get('/ocean/v1/queryBalance/:address', async function(req, res) {
+	logger.info('==================== QueryBalance ==================');
+	let address = req.params.address;
+
+	let channelName = config.channelName;
+	let chaincodeName = config.chaincodeName;
+	let peer = config.queryPeers;
+	let username = config.user2.username;
+	let orgname = config.user2.org;
+	let fcn = "queryBalance";
+
+	logger.info('address : ' + address);
+
+	if (!address) {
+		res.json(getErrorMessage('\'address\''));
+		return;
+	}
+
+	let args = [];
+	args.push(address)
+
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
 	res.send(message);
 });
 

@@ -38,8 +38,8 @@ type Token struct {
 }
 
 const (
-	TokenPrefix      = "TokenPrefix"
-	WalletInfoPrefix = "WalletInfoPrefix"
+	TokenPrefix  = "TokenPrefix"
+	WalletPrefix = "WalletPrefix"
 )
 
 func (t *OceanChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
@@ -92,6 +92,12 @@ func (t *OceanChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		return t.initValue(stub, args)
 	} else if function == "move" {
 		return t.move(stub, args)
+	} else if function == "queryToken" {
+		return t.queryToken(stub, args)
+	} else if function == "queryBalance" {
+		return t.queryBalance(stub, args)
+	} else if function == "issueToken" {
+		return t.issueToken(stub, args)
 	}
 
 	logger.Error("func unknown : " + function)
@@ -153,7 +159,7 @@ func (t *OceanChaincode) issueToken(stub shim.ChaincodeStubInterface, args []str
 		return shim.Error(err.Error())
 	}
 
-	compositeKey, err := stub.CreateCompositeKey(WalletInfoPrefix+token.Address, []string{tokenID, "+", token.TotalNumber})
+	compositeKey, err := stub.CreateCompositeKey(WalletPrefix+token.Address, []string{tokenID, "+", token.TotalNumber})
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -162,10 +168,113 @@ func (t *OceanChaincode) issueToken(stub shim.ChaincodeStubInterface, args []str
 	if err != nil {
 		return shim.Error(err.Error())
 	}
-	//GetStateByPartialCompositeKey
-	//SplitCompositeKey
 
 	return shim.Success(nil)
+}
+
+func (t *OceanChaincode) queryToken(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 1 {
+		return shim.Error("incorrect number of args")
+	}
+
+	tokenID := args[0]
+
+	tokenIDBytes, err := stub.GetState(TokenPrefix + tokenID)
+	if len(tokenIDBytes) == 0 || err != nil {
+		return shim.Error("token not exist")
+	}
+
+	return shim.Success(tokenIDBytes)
+}
+
+type TokenBalance struct {
+	TokenID        string   `json:"tokenID"`
+	Balance        string   `json:"balance"`
+	BalanceNumeric *big.Int `json:"-"`
+}
+
+type BalanceInfo struct {
+	Address       string          `json:"address"`
+	TokenBalances []*TokenBalance `json:"tokenBalances"`
+}
+
+func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 1 {
+		return shim.Error("incorrect number of args")
+	}
+
+	address := args[0]
+
+	iterator, err := stub.GetStateByPartialCompositeKey(WalletPrefix+address, []string{})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	defer iterator.Close()
+
+	balanceInfo := BalanceInfo{
+		Address: address,
+	}
+
+	for iterator.HasNext() {
+		responseRange, err := iterator.Next()
+		if err != nil {
+			return shim.Error(err.Error())
+		}
+
+		_, compositeKeyParts, err := stub.SplitCompositeKey(responseRange.Key)
+		if err != nil {
+			return shim.Error(err.Error())
+		}
+
+		tokenID := compositeKeyParts[0]
+		operation := compositeKeyParts[1]
+		num := compositeKeyParts[2]
+
+		numBigInt := new(big.Int)
+		numBigInt, success := numBigInt.SetString(num, 10)
+		if !success {
+			return shim.Error("number not match: " + num)
+		}
+
+		exist := false
+		for _, tokenBalance := range balanceInfo.TokenBalances {
+			if tokenBalance.TokenID == tokenID {
+				if operation == "+" {
+					tokenBalance.BalanceNumeric = new(big.Int).Add(tokenBalance.BalanceNumeric, numBigInt)
+				} else {
+					tokenBalance.BalanceNumeric = new(big.Int).Sub(tokenBalance.BalanceNumeric, numBigInt)
+				}
+				exist = true
+				break
+			}
+		}
+
+		if !exist {
+			tokenBalance := &TokenBalance{
+				TokenID:        tokenID,
+				BalanceNumeric: big.NewInt(0),
+			}
+
+			if operation == "+" {
+				tokenBalance.BalanceNumeric = new(big.Int).Add(tokenBalance.BalanceNumeric, numBigInt)
+			} else {
+				tokenBalance.BalanceNumeric = new(big.Int).Sub(tokenBalance.BalanceNumeric, numBigInt)
+			}
+
+			balanceInfo.TokenBalances = append(balanceInfo.TokenBalances, tokenBalance)
+		}
+	}
+
+	for i := 0; i < len(balanceInfo.TokenBalances); i++ {
+		balanceInfo.TokenBalances[i].Balance = balanceInfo.TokenBalances[i].BalanceNumeric.String()
+	}
+
+	balanceData, err := json.Marshal(&balanceInfo)
+	if err != nil {
+		return shim.Error("Json marshal fail: " + err.Error())
+	}
+
+	return shim.Success(balanceData)
 }
 
 func main() {
