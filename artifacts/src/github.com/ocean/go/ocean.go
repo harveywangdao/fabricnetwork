@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"strconv"
 
@@ -38,8 +39,9 @@ type Token struct {
 }
 
 const (
-	TokenPrefix  = "TokenPrefix"
-	WalletPrefix = "WalletPrefix"
+	TokenPrefix    = "TokenPrefix"
+	WalletPrefix   = "WalletPrefix"
+	TransferPrefix = "TransferPrefix"
 )
 
 func (t *OceanChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
@@ -98,6 +100,10 @@ func (t *OceanChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		return t.queryBalance(stub, args)
 	} else if function == "issueToken" {
 		return t.issueToken(stub, args)
+	} else if function == "transfer" {
+		return t.transfer(stub, args)
+	} else if function == "queryTx" {
+		return t.queryTx(stub, args)
 	}
 
 	logger.Error("func unknown : " + function)
@@ -159,7 +165,7 @@ func (t *OceanChaincode) issueToken(stub shim.ChaincodeStubInterface, args []str
 		return shim.Error(err.Error())
 	}
 
-	compositeKey, err := stub.CreateCompositeKey(WalletPrefix+token.Address, []string{tokenID, "+", token.TotalNumber})
+	compositeKey, err := stub.CreateCompositeKey(WalletPrefix+token.Address, []string{tokenID, "+", token.TotalNumber, "issueToken"})
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -275,6 +281,210 @@ func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []s
 	}
 
 	return shim.Success(balanceData)
+}
+
+func (t *OceanChaincode) getBalance(stub shim.ChaincodeStubInterface, address string) (*BalanceInfo, error) {
+	iterator, err := stub.GetStateByPartialCompositeKey(WalletPrefix+address, []string{})
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	balanceInfo := BalanceInfo{
+		Address: address,
+	}
+
+	for iterator.HasNext() {
+		responseRange, err := iterator.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		_, compositeKeyParts, err := stub.SplitCompositeKey(responseRange.Key)
+		if err != nil {
+			return nil, err
+		}
+
+		tokenID := compositeKeyParts[0]
+		operation := compositeKeyParts[1]
+		num := compositeKeyParts[2]
+
+		numBigInt := new(big.Int)
+		numBigInt, success := numBigInt.SetString(num, 10)
+		if !success {
+			return nil, errors.New("number not match: " + num)
+		}
+
+		exist := false
+		for _, tokenBalance := range balanceInfo.TokenBalances {
+			if tokenBalance.TokenID == tokenID {
+				if operation == "+" {
+					tokenBalance.BalanceNumeric = new(big.Int).Add(tokenBalance.BalanceNumeric, numBigInt)
+				} else {
+					tokenBalance.BalanceNumeric = new(big.Int).Sub(tokenBalance.BalanceNumeric, numBigInt)
+				}
+				exist = true
+				break
+			}
+		}
+
+		if !exist {
+			tokenBalance := &TokenBalance{
+				TokenID:        tokenID,
+				BalanceNumeric: big.NewInt(0),
+			}
+
+			if operation == "+" {
+				tokenBalance.BalanceNumeric = new(big.Int).Add(tokenBalance.BalanceNumeric, numBigInt)
+			} else {
+				tokenBalance.BalanceNumeric = new(big.Int).Sub(tokenBalance.BalanceNumeric, numBigInt)
+			}
+
+			balanceInfo.TokenBalances = append(balanceInfo.TokenBalances, tokenBalance)
+		}
+	}
+
+	for i := 0; i < len(balanceInfo.TokenBalances); i++ {
+		balanceInfo.TokenBalances[i].Balance = balanceInfo.TokenBalances[i].BalanceNumeric.String()
+	}
+
+	return &balanceInfo, nil
+}
+
+type Transfer struct {
+	FromAddress string `json:"fromAddress"`
+	ToAddress   string `json:"toAddress"`
+	TokenID     string `json:"tokenID"`
+	Number      string `json:"number"`
+	TxID        string `json:"txID"`
+}
+
+func (t *OceanChaincode) transfer(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 4 {
+		return shim.Error("incorrect number of args")
+	}
+
+	txID := args[0]
+	if txID == "" {
+		return shim.Error("txID is null")
+	}
+
+	verify, err := Verify(args[1], args[2], args[3])
+	if !verify {
+		return shim.Error("verify fail: " + err.Error())
+	}
+
+	transferJson, err := hex.DecodeString(args[2])
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	tx := Transfer{}
+	err = json.Unmarshal(transferJson, &tx)
+	if err != nil {
+		return shim.Error("json unmarshal fail")
+	}
+
+	if GetAddress(args[1]) != tx.FromAddress {
+		return shim.Error("address and public key not match")
+	}
+
+	if !IsValidAddress(tx.ToAddress) {
+		return shim.Error("toAddress is invalid")
+	}
+
+	if tx.FromAddress == tx.ToAddress {
+		return shim.Error("fromAddress and toAddress can not be same")
+	}
+
+	if tx.Number == "" || tx.TokenID == "" {
+		return shim.Error("number or tokenID is null string")
+	}
+
+	if !IsGtZeroInteger(tx.Number) {
+		return shim.Error("number need to be greater than 0 integer")
+	}
+
+	tokenIDBytes, err := stub.GetState(TokenPrefix + tx.TokenID)
+	if len(tokenIDBytes) == 0 {
+		return shim.Error("token not exist")
+	}
+
+	transferBytes, err := stub.GetState(TransferPrefix + txID)
+	if len(transferBytes) != 0 {
+		return shim.Error("transfer already existed")
+	}
+
+	fromAddrBalanceInfo, err := t.getBalance(stub, tx.FromAddress)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	number := new(big.Int)
+	number, success := number.SetString(tx.Number, 10)
+	if !success {
+		return shim.Error("number not match: " + tx.Number)
+	}
+
+	fromAddrBalance := big.NewInt(0)
+	for _, tokenBalace := range fromAddrBalanceInfo.TokenBalances {
+		if tokenBalace.TokenID == tx.TokenID {
+			fromAddrBalance = tokenBalace.BalanceNumeric
+			break
+		}
+	}
+
+	if fromAddrBalance.Cmp(number) < 0 {
+		return shim.Error("balance of fromAddress " + fromAddrBalance.String() + " less than " + "number " + tx.Number)
+	}
+
+	tx.TxID = txID
+	txJson, err := json.Marshal(&tx)
+	if err != nil {
+		return shim.Error("Json marshal fail: " + err.Error())
+	}
+
+	err = stub.PutState(TransferPrefix+txID, txJson)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	compositeKey, err := stub.CreateCompositeKey(WalletPrefix+tx.FromAddress, []string{tx.TokenID, "-", tx.Number, txID})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	err = stub.PutState(compositeKey, []byte{0})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	compositeKey, err = stub.CreateCompositeKey(WalletPrefix+tx.ToAddress, []string{tx.TokenID, "+", tx.Number, txID})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	err = stub.PutState(compositeKey, []byte{0})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	return shim.Success(nil)
+}
+
+func (t *OceanChaincode) queryTx(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 1 {
+		return shim.Error("incorrect number of args")
+	}
+
+	txID := args[0]
+
+	txBytes, err := stub.GetState(TransferPrefix + txID)
+	if len(txBytes) == 0 || err != nil {
+		return shim.Error("transfer not exist")
+	}
+
+	return shim.Success(txBytes)
 }
 
 func main() {

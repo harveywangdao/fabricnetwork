@@ -326,99 +326,6 @@ app.post('/channels/:channelName/chaincodes/:chaincodeName', async function(req,
 	res.send(message);
 });
 
-app.post('/ocean/v1/issueToken', async function(req, res) {
-	logger.info('==================== IssueToken ==================');
-	var peers = config.invokePeers;
-	var channelName = config.channelName;
-	var chaincodeName = config.chaincodeName;
-
-	var fcn = "issueToken";
-	var pubKey = req.body.pubKey;
-	var origin = req.body.origin;
-	var signature = req.body.signature;
-
-	var username = config.user1.username;
-	var orgname = config.user1.org;
-
-	if (!pubKey) {
-		res.json(getErrorMessage('\'pubKey\''));
-		return;
-	}
-
-	if (!origin) {
-		res.json(getErrorMessage('\'origin\''));
-		return;
-	}
-
-	if (!signature) {
-		res.json(getErrorMessage('\'signature\''));
-		return;
-	}
-
-	let tokenID = uuid().replace(/-/g, '');
-	logger.info("tokenID =", tokenID);
-
-	var args = [];
-	args.push(tokenID);
-	args.push(pubKey);
-	args.push(origin);
-	args.push(signature);
-
-	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
-	message.tokenID = tokenID;
-	res.send(message);
-});
-
-app.get('/ocean/v1/queryToken/:tokenID', async function(req, res) {
-	logger.info('==================== QueryToken ==================');
-	let tokenID = req.params.tokenID;
-
-	let channelName = config.channelName;
-	let chaincodeName = config.chaincodeName;
-	let peer = config.queryPeers;
-	let username = config.user2.username;
-	let orgname = config.user2.org;
-	let fcn = "queryToken";
-
-	logger.info('tokenID : ' + tokenID);
-
-	if (!tokenID) {
-		res.json(getErrorMessage('\'tokenID\''));
-		return;
-	}
-
-	let args = [];
-	args.push(tokenID)
-
-	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
-	res.send(message);
-});
-
-app.get('/ocean/v1/queryBalance/:address', async function(req, res) {
-	logger.info('==================== QueryBalance ==================');
-	let address = req.params.address;
-
-	let channelName = config.channelName;
-	let chaincodeName = config.chaincodeName;
-	let peer = config.queryPeers;
-	let username = config.user2.username;
-	let orgname = config.user2.org;
-	let fcn = "queryBalance";
-
-	logger.info('address : ' + address);
-
-	if (!address) {
-		res.json(getErrorMessage('\'address\''));
-		return;
-	}
-
-	let args = [];
-	args.push(address)
-
-	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
-	res.send(message);
-});
-
 // Query on chaincode on target peers
 app.get('/channels/:channelName/chaincodes/:chaincodeName', async function(req, res) {
 	logger.info('==================== QUERY BY CHAINCODE ==================');
@@ -566,5 +473,166 @@ app.get('/channels', async function(req, res) {
 	}
 
 	let message = await query.getChannels(peer, username, orgname);
+	res.send(message);
+});
+
+app.post('/ocean/v1/issueToken', async function(req, res) {
+	logger.info('==================== IssueToken ==================');
+	var peers = config.invokePeers;
+	var channelName = config.channelName;
+	var chaincodeName = config.chaincodeName;
+
+	var fcn = "issueToken";
+	var pubKey = req.body.pubKey;
+	var origin = req.body.origin;
+	var signature = req.body.signature;
+
+	var username = config.user1.username;
+	var orgname = config.user1.org;
+
+	if (!pubKey) {
+		res.json(getErrorMessage('\'pubKey\''));
+		return;
+	}
+
+	if (!origin) {
+		res.json(getErrorMessage('\'origin\''));
+		return;
+	}
+
+	if (!signature) {
+		res.json(getErrorMessage('\'signature\''));
+		return;
+	}
+
+	let tokenID = uuid().replace(/-/g, '');
+	logger.info("tokenID =", tokenID);
+
+	var args = [];
+	args.push(tokenID);
+	args.push(pubKey);
+	args.push(origin);
+	args.push(signature);
+
+	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
+	message.tokenID = tokenID;
+	res.send(message);
+});
+
+app.get('/ocean/v1/queryToken/:tokenID', async function(req, res) {
+	logger.info('==================== QueryToken ==================');
+	let tokenID = req.params.tokenID;
+
+	let channelName = config.channelName;
+	let chaincodeName = config.chaincodeName;
+	let peer = config.queryPeers;
+	let username = config.user2.username;
+	let orgname = config.user2.org;
+	let fcn = "queryToken";
+
+	logger.info('tokenID : ' + tokenID);
+
+	if (!tokenID) {
+		res.json(getErrorMessage('\'tokenID\''));
+		return;
+	}
+
+	let args = [];
+	args.push(tokenID)
+
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
+	res.send(message);
+});
+
+app.get('/ocean/v1/queryBalance/:address', async function(req, res) {
+	logger.info('==================== QueryBalance ==================');
+	let address = req.params.address;
+
+	let channelName = config.channelName;
+	let chaincodeName = config.chaincodeName;
+	let peer = config.queryPeers;
+	let username = config.user2.username;
+	let orgname = config.user2.org;
+	let fcn = "queryBalance";
+
+	logger.info('address : ' + address);
+
+	if (!address) {
+		res.json(getErrorMessage('\'address\''));
+		return;
+	}
+
+	let args = [];
+	args.push(address)
+
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
+	res.send(message);
+});
+
+app.post('/ocean/v1/transfer', async function(req, res) {
+	logger.info('==================== Tranfer ==================');
+	var peers = config.invokePeers;
+	var channelName = config.channelName;
+	var chaincodeName = config.chaincodeName;
+
+	var fcn = "transfer";
+	var pubKey = req.body.pubKey;
+	var origin = req.body.origin;
+	var signature = req.body.signature;
+
+	var username = config.user1.username;
+	var orgname = config.user1.org;
+
+	if (!pubKey) {
+		res.json(getErrorMessage('\'pubKey\''));
+		return;
+	}
+
+	if (!origin) {
+		res.json(getErrorMessage('\'origin\''));
+		return;
+	}
+
+	if (!signature) {
+		res.json(getErrorMessage('\'signature\''));
+		return;
+	}
+
+	let txID = uuid().replace(/-/g, '');
+	logger.info("txID =", txID);
+
+	var args = [];
+	args.push(txID);
+	args.push(pubKey);
+	args.push(origin);
+	args.push(signature);
+
+	let message = await invoke.invokeChaincode(peers, channelName, chaincodeName, fcn, args, username, orgname);
+	message.txID = txID;
+	res.send(message);
+});
+
+app.get('/ocean/v1/queryTx/:txID', async function(req, res) {
+	logger.info('==================== QueryBalance ==================');
+	let txID = req.params.txID;
+
+	let channelName = config.channelName;
+	let chaincodeName = config.chaincodeName;
+	let peer = config.queryPeers;
+	let username = config.user2.username;
+	let orgname = config.user2.org;
+	let fcn = "queryTx";
+
+	logger.info('txID : ' + txID);
+
+	if (!txID) {
+		res.json(getErrorMessage('\'txID\''));
+		return;
+	}
+
+	let args = [];
+	args.push(txID)
+
+	let message = await query.queryChaincode(peer, channelName, chaincodeName, args, fcn, username, orgname);
 	res.send(message);
 });
