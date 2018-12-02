@@ -17,6 +17,7 @@ var util = require('util');
 var helper = require('./helper.js');
 var logger = helper.getLogger('Query');
 logger.setLevel('INFO');
+
 var queryChaincode = async function(peer, channelName, chaincodeName, args, fcn, username, org_name) {
 	try {
 		// first setup the client for this org
@@ -36,22 +37,38 @@ var queryChaincode = async function(peer, channelName, chaincodeName, args, fcn,
 			fcn: fcn,
 			args: args
 		};
+
 		let response_payloads = await channel.queryByChaincode(request);
 		if (response_payloads) {
 			for (let i = 0; i < response_payloads.length; i++) {
 				logger.debug(args[0]+' now has ' + response_payloads[i].toString('utf8') +
 					' after the move');
 			}
-			return response_payloads[0].toString('utf8');
+
+			var res = response_payloads[0].toString('utf8');
+			return res;
 		} else {
 			logger.error('response_payloads is null');
-			return 'response_payloads is null';
+
+			let result = {
+				status: false,
+				message: 'response_payloads is null'
+			};
+
+			return result;
 		}
 	} catch(error) {
 		logger.error('Failed to query due to error: ' + error.stack ? error.stack : error);
-		return error.toString();
+
+		let result = {
+			status: false,
+			message: error.toString()
+		};
+
+		return result;
 	}
 };
+
 var getBlockByNumber = async function(peer, channelName, blockNumber, username, org_name) {
 	try {
 		// first setup the client for this org

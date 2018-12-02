@@ -178,19 +178,41 @@ func (t *OceanChaincode) issueToken(stub shim.ChaincodeStubInterface, args []str
 	return shim.Success(nil)
 }
 
+type Response struct {
+	Status bool   `json:"status"`
+	Msg    string `json:"message"`
+	Data   []byte `json:"data"`
+}
+
+func (t *OceanChaincode) response(res *Response) pb.Response {
+	resdata, err := json.Marshal(res)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	return shim.Success(resdata)
+}
+
 func (t *OceanChaincode) queryToken(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	res := &Response{}
+	res.Status = false
+
 	if len(args) != 1 {
-		return shim.Error("incorrect number of args")
+		res.Msg = "incorrect number of args"
+		return t.response(res)
 	}
 
 	tokenID := args[0]
 
 	tokenIDBytes, err := stub.GetState(TokenPrefix + tokenID)
 	if len(tokenIDBytes) == 0 || err != nil {
-		return shim.Error("token not exist")
+		res.Msg = "token not exist"
+		return t.response(res)
 	}
 
-	return shim.Success(tokenIDBytes)
+	res.Status = true
+	res.Data = tokenIDBytes
+	return t.response(res)
 }
 
 type TokenBalance struct {
@@ -205,15 +227,20 @@ type BalanceInfo struct {
 }
 
 func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	res := &Response{}
+	res.Status = false
+
 	if len(args) != 1 {
-		return shim.Error("incorrect number of args")
+		res.Msg = "incorrect number of args"
+		return t.response(res)
 	}
 
 	address := args[0]
 
 	iterator, err := stub.GetStateByPartialCompositeKey(WalletPrefix+address, []string{})
 	if err != nil {
-		return shim.Error(err.Error())
+		res.Msg = err.Error()
+		return t.response(res)
 	}
 	defer iterator.Close()
 
@@ -224,12 +251,14 @@ func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []s
 	for iterator.HasNext() {
 		responseRange, err := iterator.Next()
 		if err != nil {
-			return shim.Error(err.Error())
+			res.Msg = err.Error()
+			return t.response(res)
 		}
 
 		_, compositeKeyParts, err := stub.SplitCompositeKey(responseRange.Key)
 		if err != nil {
-			return shim.Error(err.Error())
+			res.Msg = err.Error()
+			return t.response(res)
 		}
 
 		tokenID := compositeKeyParts[0]
@@ -239,7 +268,8 @@ func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []s
 		numBigInt := new(big.Int)
 		numBigInt, success := numBigInt.SetString(num, 10)
 		if !success {
-			return shim.Error("number not match: " + num)
+			res.Msg = "number not match: " + num
+			return t.response(res)
 		}
 
 		exist := false
@@ -277,10 +307,13 @@ func (t *OceanChaincode) queryBalance(stub shim.ChaincodeStubInterface, args []s
 
 	balanceData, err := json.Marshal(&balanceInfo)
 	if err != nil {
-		return shim.Error("Json marshal fail: " + err.Error())
+		res.Msg = "Json marshal fail: " + err.Error()
+		return t.response(res)
 	}
 
-	return shim.Success(balanceData)
+	res.Status = true
+	res.Data = balanceData
+	return t.response(res)
 }
 
 func (t *OceanChaincode) getBalance(stub shim.ChaincodeStubInterface, address string) (*BalanceInfo, error) {
@@ -473,18 +506,25 @@ func (t *OceanChaincode) transfer(stub shim.ChaincodeStubInterface, args []strin
 }
 
 func (t *OceanChaincode) queryTx(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	res := &Response{}
+	res.Status = false
+
 	if len(args) != 1 {
-		return shim.Error("incorrect number of args")
+		res.Msg = "incorrect number of args"
+		return t.response(res)
 	}
 
 	txID := args[0]
 
 	txBytes, err := stub.GetState(TransferPrefix + txID)
 	if len(txBytes) == 0 || err != nil {
-		return shim.Error("transfer not exist")
+		res.Msg = "transfer not exist"
+		return t.response(res)
 	}
 
-	return shim.Success(txBytes)
+	res.Status = true
+	res.Data = txBytes
+	return t.response(res)
 }
 
 func main() {
